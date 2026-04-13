@@ -3,6 +3,7 @@ session_start();
 if (!isset($_SESSION['usuario_id']) || ($_SESSION['rol'] ?? '') != 'admin') { 
     header("Location: index.php"); exit; 
 }
+// Ruta unificada para evitar conflictos de merge por include relativo.
 require_once __DIR__ . '/config/database.php';
 
 // --- LOGO Y FONDO ---
