@@ -1,8 +1,8 @@
 <?php
 if (!defined('GREENAPI_INSTANCE')) {
-    define('GREENAPI_INSTANCE', '7107581388');
+    define('GREENAPI_INSTANCE', getenv('GREENAPI_INSTANCE') ?: '');
 }
 
 if (!defined('GREENAPI_TOKEN')) {
-    define('GREENAPI_TOKEN', 'b9d1f4a9e9f641aca25319c4a88b5d28395f7ab9dbf84a24a3');
+    define('GREENAPI_TOKEN', getenv('GREENAPI_TOKEN') ?: '');
 }

@@ -20,7 +20,7 @@ if (!preg_match('/^data:image\/png;base64,/', $imagen)) {
 }
 
 $imagen = substr($imagen, strpos($imagen, ',') + 1);
-$binario = base64_decode($imagen);
+$binario = base64_decode($imagen, true);
 
 if ($binario === false) {
     echo json_encode(['status' => 'error', 'mensaje' => 'No se pudo decodificar']);
@@ -29,7 +29,7 @@ if ($binario === false) {
 
 $dir = __DIR__ . '/uploads/remisiones';
 if (!is_dir($dir)) {
-    @mkdir($dir, 0777, true);
+    mkdir($dir, 0755, true);
 }
 
 if (!is_dir($dir)) {
