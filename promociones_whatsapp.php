@@ -5,7 +5,7 @@ if (!isset($_SESSION['usuario_id'])) {
     exit;
 }
 
-require_once 'config/database.php';
+require_once __DIR__ . '/config/database.php';
 
 function existeTablaPromo(mysqli $conn, string $tabla): bool {
     $tabla = $conn->real_escape_string($tabla);

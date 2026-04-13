@@ -1,8 +1,8 @@
 <?php
 session_start();
 if (!isset($_SESSION['usuario_id'])) { header("Location: index.php"); exit; }
-require_once 'config/database.php';
-require_once 'config/functions.php';
+require_once __DIR__ . '/config/database.php';
+require_once __DIR__ . '/config/functions.php';
 
 /*
 |--------------------------------------------------------------------------

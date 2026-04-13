@@ -8,7 +8,7 @@ if (!isset($_SESSION['usuario_id'])) {
 }
 
 if (!isset($conn) || !($conn instanceof mysqli)) {
-    require_once 'config/database.php';
+    require_once __DIR__ . '/config/database.php';
 }
 
 function usuariosListaEscape($valor): string {

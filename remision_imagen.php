@@ -1,5 +1,5 @@
 <?php
-require_once 'config/database.php';
+require_once __DIR__ . '/config/database.php';
 
 if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {
     die("Venta no válida");
