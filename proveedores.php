@@ -1,6 +1,6 @@
 <?php
 session_start();
-if (!isset($_SESSION['usuario_id']) || $_SESSION['rol'] != 'admin') { 
+if (!isset($_SESSION['usuario_id']) || ($_SESSION['rol'] ?? '') != 'admin') { 
     header("Location: index.php"); exit; 
 }
 require_once 'config/database.php';
@@ -17,29 +17,59 @@ $notificacion = "";
 
 // --- 1. REGISTRO DE PROVEEDOR ---
 if (isset($_POST['btn_proveedor'])) {
-    $nombre = mysqli_real_escape_string($conn, $_POST['nombre']);
-    $contacto = mysqli_real_escape_string($conn, $_POST['contacto']);
-    $categoria = mysqli_real_escape_string($conn, $_POST['categoria']);
-    $conn->query("INSERT INTO proveedores (nombre, contacto, categoria) VALUES ('$nombre', '$contacto', '$categoria')");
-    $notificacion = "Proveedor registrado.";
+    $nombre = trim((string)($_POST['nombre'] ?? ''));
+    $contacto = trim((string)($_POST['contacto'] ?? ''));
+    $categoria = trim((string)($_POST['categoria'] ?? ''));
+
+    if ($nombre !== '') {
+        $stmtProv = $conn->prepare("INSERT INTO proveedores (nombre, contacto, categoria) VALUES (?, ?, ?)");
+        $stmtProv->bind_param("sss", $nombre, $contacto, $categoria);
+        $stmtProv->execute();
+        $stmtProv->close();
+        $notificacion = "Proveedor registrado.";
+    } else {
+        $notificacion = "El nombre del proveedor es obligatorio.";
+    }
 }
 
 // --- 2. REGISTRO DE FACTURA / GASTO ---
 if (isset($_POST['btn_factura'])) {
-    $id_prov = $_POST['id_proveedor'];
-    $monto = $_POST['monto'];
-    $desc = mysqli_real_escape_string($conn, $_POST['descripcion']);
-    $fecha = $_POST['fecha'];
-    $conn->query("INSERT INTO facturas_gastos (id_proveedor, monto, descripcion, fecha) VALUES ('$id_prov', '$monto', '$desc', '$fecha')");
-    $notificacion = "Gasto ingresado y descontado de caja.";
+    $id_prov = (int)($_POST['id_proveedor'] ?? 0);
+    $monto = (float)($_POST['monto'] ?? 0);
+    $desc = trim((string)($_POST['descripcion'] ?? ''));
+    $fecha = trim((string)($_POST['fecha'] ?? ''));
+
+    if ($id_prov > 0 && $monto > 0 && $fecha !== '') {
+        $stmtGasto = $conn->prepare("INSERT INTO facturas_gastos (id_proveedor, monto, descripcion, fecha) VALUES (?, ?, ?, ?)");
+        $stmtGasto->bind_param("idss", $id_prov, $monto, $desc, $fecha);
+        $stmtGasto->execute();
+        $stmtGasto->close();
+        $notificacion = "Gasto ingresado y descontado de caja.";
+    } else {
+        $notificacion = "Datos de factura inválidos.";
+    }
 }
 
 // --- 3. CÁLCULOS MENSUALES ---
 $mes_actual = date('m');
 $anio_actual = date('Y');
 
-$ingresos = $conn->query("SELECT SUM(total) as t FROM ventas WHERE MONTH(fecha) = '$mes_actual' AND YEAR(fecha) = '$anio_actual'")->fetch_assoc()['t'] ?? 0;
-$gastos = $conn->query("SELECT SUM(monto) as t FROM facturas_gastos WHERE MONTH(fecha) = '$mes_actual' AND YEAR(fecha) = '$anio_actual'")->fetch_assoc()['t'] ?? 0;
+$ingresos = 0;
+$gastos = 0;
+
+$stmtIngresos = $conn->prepare("SELECT SUM(total) as t FROM ventas WHERE MONTH(fecha) = ? AND YEAR(fecha) = ?");
+$stmtIngresos->bind_param("ii", $mes_actual, $anio_actual);
+$stmtIngresos->execute();
+$resIngresos = $stmtIngresos->get_result()->fetch_assoc();
+$stmtIngresos->close();
+$ingresos = (float)($resIngresos['t'] ?? 0);
+
+$stmtGastosMes = $conn->prepare("SELECT SUM(monto) as t FROM facturas_gastos WHERE MONTH(fecha) = ? AND YEAR(fecha) = ?");
+$stmtGastosMes->bind_param("ii", $mes_actual, $anio_actual);
+$stmtGastosMes->execute();
+$resGastos = $stmtGastosMes->get_result()->fetch_assoc();
+$stmtGastosMes->close();
+$gastos = (float)($resGastos['t'] ?? 0);
 $utilidad = $ingresos - $gastos;
 
 $lista_prov = $conn->query("SELECT * FROM proveedores ORDER BY nombre ASC");

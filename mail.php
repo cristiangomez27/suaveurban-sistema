@@ -3,7 +3,7 @@
 function enviarCorreoSMTP($to, $subject, $htmlBody)
 {
     if (!defined('MAIL_HOST')) {
-        require_once __DIR__ . '/../config/mail.php';
+        require_once __DIR__ . '/config/mail.php';
     }
 
     $host = MAIL_HOST;

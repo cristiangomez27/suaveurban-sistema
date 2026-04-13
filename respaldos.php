@@ -1,6 +1,6 @@
 <?php
 session_start();
-if ($_SESSION['rol'] != 'admin') { die("Acceso denegado"); }
+if (($_SESSION['rol'] ?? '') != 'admin') { die("Acceso denegado"); }
 require_once 'config/database.php';
 
 // --- LÓGICA DE EXPORTACIÓN A EXCEL (CSV) ---
@@ -18,9 +18,20 @@ if (isset($_GET['exportar'])) {
     } elseif ($tipo == 'inventario') {
         fputcsv($output, array('ID', 'Producto', 'Stock', 'Precio Venta', 'Costo Compra'));
         $rows = $conn->query("SELECT id, nombre, stock, precio, costo FROM productos");
+    } elseif ($tipo == 'clientes') {
+        fputcsv($output, array('ID', 'Nombre', 'Telefono', 'Email', 'Tipo Cliente'));
+        $rows = $conn->query("SELECT id, nombre, telefono, email, tipo_cliente FROM clientes");
+    } else {
+        fclose($output);
+        http_response_code(400);
+        exit('Tipo de exportación no válido');
     }
-    
-    while ($row = $rows->fetch_assoc()) fputcsv($output, $row);
+
+    if ($rows instanceof mysqli_result) {
+        while ($row = $rows->fetch_assoc()) {
+            fputcsv($output, $row);
+        }
+    }
     fclose($output);
     exit;
 }
