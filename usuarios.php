@@ -117,6 +117,10 @@ function responderJsonUsuarios(array $data): void {
     exit;
 }
 
+function esSolicitudAjaxUsuarios(): bool {
+    return strtolower($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'xmlhttprequest';
+}
+
 /*
 |--------------------------------------------------------------------------
 | CREAR TABLAS/COLUMNAS SI NO EXISTEN
@@ -219,8 +223,6 @@ $esAdmin = ($rolActual === 'admin');
 |--------------------------------------------------------------------------
 */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion']) && $_POST['accion'] === 'registrar_usuario') {
-    $esAjax = strtolower($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'xmlhttprequest';
-
     if ($permitir_registro != 1) {
         responderJsonUsuarios(['ok' => false, 'mensaje' => '❌ El registro está desactivado.']);
     }
@@ -297,12 +299,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion']) && $_POST['
     $passwordHash = password_hash($password, PASSWORD_DEFAULT);
     $estado = 'activo';
 
-    $stmtInsert = $conn->prepare("INSERT INTO usuarios (nombre, usuario, correo, password, rol, estado, activo) VALUES (?, ?, ?, ?, ?, ?, 1)");
-    if (!$stmtInsert) {
-        responderJsonUsuarios(['ok' => false, 'mensaje' => '❌ Error al preparar registro: ' . $conn->error]);
+    if (existeColumnaUsuarios($conn, 'usuarios', 'activo')) {
+        $stmtInsert = $conn->prepare("INSERT INTO usuarios (nombre, usuario, correo, password, rol, estado, activo) VALUES (?, ?, ?, ?, ?, ?, 1)");
+        if (!$stmtInsert) {
+            responderJsonUsuarios(['ok' => false, 'mensaje' => '❌ Error al preparar registro: ' . $conn->error]);
+        }
+        $stmtInsert->bind_param("ssssss", $nombre, $usuario, $correo, $passwordHash, $rol, $estado);
+    } else {
+        $stmtInsert = $conn->prepare("INSERT INTO usuarios (nombre, usuario, correo, password, rol, estado) VALUES (?, ?, ?, ?, ?, ?)");
+        if (!$stmtInsert) {
+            responderJsonUsuarios(['ok' => false, 'mensaje' => '❌ Error al preparar registro: ' . $conn->error]);
+        }
+        $stmtInsert->bind_param("ssssss", $nombre, $usuario, $correo, $passwordHash, $rol, $estado);
     }
-
-    $stmtInsert->bind_param("ssssss", $nombre, $usuario, $correo, $passwordHash, $rol, $estado);
 
     if ($stmtInsert->execute()) {
         $stmtInsert->close();
@@ -321,6 +330,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion']) && $_POST['
 */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion']) && $_POST['accion'] === 'actualizar_usuario') {
     if (!$esAdmin) {
+        if (esSolicitudAjaxUsuarios()) {
+            responderJsonUsuarios(['ok' => false, 'mensaje' => '❌ Solo el administrador puede editar usuarios.']);
+        }
         $mensaje = "❌ Solo el administrador puede editar usuarios.";
         $tipo_mensaje = 'error';
     } else {
@@ -387,14 +399,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion']) && $_POST['
                     $tipo_mensaje = 'error';
                 } else {
                     if ($stmtUpdate->execute()) {
+                        $stmtUpdate->close();
+                        if (esSolicitudAjaxUsuarios()) {
+                            responderJsonUsuarios(['ok' => true, 'mensaje' => '✅ Usuario actualizado correctamente.']);
+                        }
                         $mensaje = "✅ Usuario actualizado correctamente.";
                         $tipo_mensaje = 'ok';
                     } else {
-                        $mensaje = "❌ No se pudo actualizar el usuario: " . $stmtUpdate->error;
+                        $errorUpdate = $stmtUpdate->error;
+                        $stmtUpdate->close();
+                        if (esSolicitudAjaxUsuarios()) {
+                            responderJsonUsuarios(['ok' => false, 'mensaje' => '❌ No se pudo actualizar el usuario: ' . $errorUpdate]);
+                        }
+                        $mensaje = "❌ No se pudo actualizar el usuario: " . $errorUpdate;
                         $tipo_mensaje = 'error';
                     }
-                    $stmtUpdate->close();
                 }
+            }
+
+            if (esSolicitudAjaxUsuarios() && $tipo_mensaje === 'error' && $mensaje !== '') {
+                responderJsonUsuarios(['ok' => false, 'mensaje' => $mensaje]);
             }
         }
     }
@@ -1059,7 +1083,7 @@ if ($esAdmin && isset($_GET['editar'])) {
 
                 <div style="margin-top:22px; display:flex; gap:10px; flex-wrap:wrap;">
                     <?php if ($esAdmin): ?>
-                        <button type="submit" class="btn">REGISTRAR USUARIO</button>
+                        <button type="submit" class="btn"><?php echo $usuarioEditar ? "ACTUALIZAR USUARIO" : "REGISTRAR USUARIO"; ?></button>
                         <?php if ($usuarioEditar): ?>
                             <a href="usuarios.php" class="btn-sec">Cancelar edición</a>
                         <?php endif; ?>
@@ -1202,16 +1226,24 @@ if ($esAdmin && isset($_GET['editar'])) {
 
         if (formUsuario) {
             formUsuario.addEventListener("submit", async function(e) {
-                e.preventDefault();
-                console.log('submit usuarios OK');
-
                 const pass = passwordInput ? passwordInput.value : '';
+                const esEdicion = <?php echo $usuarioEditar ? 'true' : 'false'; ?>;
 
-                if (!evaluarPassword(pass)) {
-                    alert("La contraseña no cumple con la seguridad mínima.");
+                if (!esEdicion || pass !== '') {
+                    if (!evaluarPassword(pass)) {
+                        e.preventDefault();
+                        alert("La contraseña no cumple con la seguridad mínima.");
+                        return;
+                    }
+                }
+
+                const accion = (this.querySelector('input[name="accion"]') || {}).value || '';
+                if (accion !== 'registrar_usuario') {
+                    // Para edición usamos POST normal y evitamos errores de parseo AJAX
                     return;
                 }
 
+                e.preventDefault();
                 const formData = new FormData(this);
                 const botonSubmit = this.querySelector('button[type="submit"]');
 
@@ -1231,14 +1263,11 @@ if ($esAdmin && isset($_GET['editar'])) {
                     });
 
                     const texto = await res.text();
-                    console.log('Respuesta usuarios.php:', texto);
-
                     let data;
                     try {
                         data = JSON.parse(texto);
                     } catch (jsonError) {
                         mostrarMensaje('❌ La respuesta del servidor no es JSON válido.', 'error');
-                        console.log('JSON inválido:', jsonError);
                         return;
                     }
 
@@ -1252,7 +1281,6 @@ if ($esAdmin && isset($_GET['editar'])) {
                     }
                 } catch (err) {
                     mostrarMensaje('❌ Error al procesar la solicitud.', 'error');
-                    console.log('Error fetch usuarios:', err);
                 } finally {
                     if (botonSubmit) {
                         botonSubmit.disabled = false;
